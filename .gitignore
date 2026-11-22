@@ -10,3 +10,7 @@ dist/
 .env
 .env.local
 .env.*.local
+
+# Python bytecode
+__pycache__/
+*.py[cod]
