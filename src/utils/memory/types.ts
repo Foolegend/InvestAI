@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from 'cc-feature'
 
 export const MEMORY_TYPE_VALUES = [
   'User',

@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from 'cc-feature'
 import type { WriteFileOptions } from 'fs'
 import {
   closeSync,

@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from 'cc-feature'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getModeFromInput,

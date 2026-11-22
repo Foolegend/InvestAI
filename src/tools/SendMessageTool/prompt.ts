@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from 'cc-feature'
 
 export const DESCRIPTION = 'Send a message to another agent'
 

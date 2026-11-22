@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { feature } from 'cc-feature'
 import { APIError } from '@anthropic-ai/sdk'
 import type {
   BetaStopReason,

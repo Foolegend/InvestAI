@@ -1,0 +1,7 @@
+# ReCode local database
+.recode
+
+# Local reconstruction
+node_modules/
+dist/
+.bun/

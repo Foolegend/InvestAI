@@ -432,6 +432,15 @@ export function getSessionId(): SessionId {
   return STATE.sessionId
 }
 
+/**
+ * Reconstruction shim: importers in this snapshot expect this export, but the
+ * bundled state module only carries the `replBridgeActive` field. Remote
+ * Control is inactive in the reconstruction, so report false.
+ */
+export function isReplBridgeActive(): boolean {
+  return (STATE as unknown as { replBridgeActive?: boolean }).replBridgeActive === true
+}
+
 export function regenerateSessionId(
   options: { setCurrentAsParent?: boolean } = {},
 ): SessionId {
