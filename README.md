@@ -1,280 +1,164 @@
-# Claude Code Source Snapshot for Security Research
+# InvestAI
 
-> This repository mirrors a **publicly exposed Claude Code source snapshot** that became accessible on **March 31, 2026** through a source map exposure in the npm distribution. It is maintained for **educational, defensive security research, and software supply-chain analysis**.
+> A locally runnable reconstruction of the Claude Code source snapshot.
 
----
+InvestAI packages the exposed Claude Code `src/` snapshot together with the
+build scaffolding that the published artifact did not include, so the CLI can
+be started with Bun for architecture study, experimentation, and defensive
+security research.
 
-## Research Context
-
-This repository is maintained by a **university student** studying:
-
-- software supply-chain exposure and build artifact leaks
-- secure software engineering practices
-- agentic developer tooling architecture
-- defensive analysis of real-world CLI systems
-
-This archive is intended to support:
-
-- educational study
-- security research practice
-- architecture review
-- discussion of packaging and release-process failures
-
-It does **not** claim ownership of the original code, and it should not be interpreted as an official Anthropic repository.
+The repository was previously named `claude-code`; the rename does not change
+the provenance of the source snapshot described at the bottom of this file.
 
 ---
 
-## How the Public Snapshot Became Accessible
+## Status
 
-[Chaofan Shou (@Fried_rice)](https://x.com/Fried_rice) publicly noted that Claude Code source material was reachable through a `.map` file exposed in the npm package:
+| Check | Result |
+|---|---|
+| `--version` | `2.1.330 (Claude Code)` |
+| `--help` | Full option and subcommand list |
+| `mcp list` | Works |
+| `-p` streaming query | Works against a local Messages API mock |
+| Tool loop | Bash `tool_use` executes and returns its result |
+| Interactive REPL | Not yet verified on a real TTY |
 
-> **"Claude code source code has been leaked via a map file in their npm registry!"**
->
-> — [@Fried_rice, March 31, 2026](https://x.com/Fried_rice/status/2038894956459290963)
-
-The published source map referenced unobfuscated TypeScript sources hosted in Anthropic's R2 storage bucket, which made the `src/` snapshot publicly downloadable.
-
----
-
-## Repository Scope
-
-Claude Code is Anthropic's CLI for interacting with Claude from the terminal to perform software engineering tasks such as editing files, running commands, searching codebases, and coordinating workflows.
-
-This repository contains a mirrored `src/` snapshot for research and analysis.
-
-- **Public exposure identified on**: 2026-03-31
-- **Language**: TypeScript
-- **Runtime**: Bun
-- **Terminal UI**: React + [Ink](https://github.com/vadimdemedes/ink)
-- **Scale**: ~1,900 files, 512,000+ lines of code
+The end-to-end checks use [scripts/mock-anthropic.ts](scripts/mock-anthropic.ts),
+so they do not call an external API.
 
 ---
 
-## Directory Structure
+## Quick start
+
+```bash
+bun install
+
+bun run start -- --version      # fast path
+bun run start -- --help
+bun run start -- -p "你好"       # non-interactive
+bun run start                   # interactive REPL
+```
+
+`start` runs:
+
+```bash
+bun run --preload ./compat/preload.ts ./src/entrypoints/cli.tsx
+```
+
+Authentication uses your existing Claude Code configuration
+(`~/.claude/settings.json` or environment variables). No credentials are
+stored in this repository.
+
+See [RECONSTRUCTION.md](RECONSTRUCTION.md) for the full reconstruction notes
+and known gaps.
+
+---
+
+## Repository layout
+
+```text
+src/                 Claude Code source snapshot (~1,900 files, 512k+ lines)
+compat/              Runtime replacements for build-time and private modules
+scripts/             Codemods, stub generator, offline API mock
+RECONSTRUCTION.md    What was added, how it works, what is still stubbed
+package.json         Dependencies and start scripts
+tsconfig.json        Path aliases and JSX configuration
+python/              Deprecated ts2py output; unused, not part of the runtime
+```
+
+### `src/` at a glance
 
 ```text
 src/
-├── main.tsx                 # Entrypoint orchestration (Commander.js-based CLI path)
-├── commands.ts              # Command registry
-├── tools.ts                 # Tool registry
-├── Tool.ts                  # Tool type definitions
-├── QueryEngine.ts           # LLM query engine
-├── context.ts               # System/user context collection
-├── cost-tracker.ts          # Token cost tracking
-│
-├── commands/                # Slash command implementations (~50)
-├── tools/                   # Agent tool implementations (~40)
-├── components/              # Ink UI components (~140)
-├── hooks/                   # React hooks
-├── services/                # External service integrations
-├── screens/                 # Full-screen UIs (Doctor, REPL, Resume)
-├── types/                   # TypeScript type definitions
-├── utils/                   # Utility functions
-│
-├── bridge/                  # IDE and remote-control bridge
-├── coordinator/             # Multi-agent coordinator
-├── plugins/                 # Plugin system
-├── skills/                  # Skill system
-├── keybindings/             # Keybinding configuration
-├── vim/                     # Vim mode
-├── voice/                   # Voice input
-├── remote/                  # Remote sessions
-├── server/                  # Server mode
-├── memdir/                  # Persistent memory directory
-├── tasks/                   # Task management
-├── state/                   # State management
-├── migrations/              # Config migrations
-├── schemas/                 # Config schemas (Zod)
-├── entrypoints/             # Initialization logic
-├── ink/                     # Ink renderer wrapper
-├── buddy/                   # Companion sprite
-├── native-ts/               # Native TypeScript utilities
-├── outputStyles/            # Output styling
-├── query/                   # Query pipeline
-└── upstreamproxy/           # Proxy configuration
+├── main.tsx           CLI parser and React/Ink renderer bootstrap
+├── commands.ts        Slash command registry
+├── tools.ts           Agent tool registry
+├── QueryEngine.ts     LLM query engine (streaming, tools, retries)
+├── commands/          Slash command implementations (~50)
+├── tools/             Agent tool implementations (~40)
+├── components/        Ink UI components (~140)
+├── services/          API, MCP, OAuth, LSP, analytics, compaction
+├── bridge/            IDE and remote-control bridge
+├── coordinator/       Multi-agent coordination
+├── plugins/           Plugin system
+├── skills/            Skill system
+├── entrypoints/       Initialization and CLI entrypoints
+├── ink/               Ink renderer wrapper
+└── utils/             Shared utilities
 ```
 
 ---
 
-## Architecture Summary
+## How the reconstruction works
 
-### 1. Tool System (`src/tools/`)
+The published npm artifact was bundled, so the snapshot was missing the
+project file, dependencies, some refactored-out modules, and the build-time
+constants. Four mechanisms close that gap:
 
-Every tool Claude Code can invoke is implemented as a self-contained module. Each tool defines its input schema, permission model, and execution logic.
+1. **Runtime feature flags.** Bun only provides `bun:bundle` inside
+   `bun build`, so 196 imports were rewritten to
+   [compat/feature.ts](compat/feature.ts). Enable flags with
+   `CC_FEATURES=KAIROS,VOICE_MODE` or `CC_FEATURE_KAIROS=1`.
+2. **Build-time macros.** [compat/preload.ts](compat/preload.ts) defines the
+   `MACRO` object (`VERSION`, `PACKAGE_URL`, etc.) that `bun build --define`
+   normally injects.
+3. **Missing modules.** 120 missing runtime modules and 33 text resources are
+   generated as clearly marked placeholders by
+   [scripts/generate-missing-stubs.py](scripts/generate-missing-stubs.py).
+4. **Private and native packages.** `color-diff-napi` uses the snapshot's own
+   TypeScript port; image processing falls back to `sharp`; audio, computer-use,
+   browser, deep-link, and macOS modifier helpers are stubs.
 
-| Tool | Description |
-|---|---|
-| `BashTool` | Shell command execution |
-| `FileReadTool` | File reading (images, PDFs, notebooks) |
-| `FileWriteTool` | File creation / overwrite |
-| `FileEditTool` | Partial file modification (string replacement) |
-| `GlobTool` | File pattern matching search |
-| `GrepTool` | ripgrep-based content search |
-| `WebFetchTool` | Fetch URL content |
-| `WebSearchTool` | Web search |
-| `AgentTool` | Sub-agent spawning |
-| `SkillTool` | Skill execution |
-| `MCPTool` | MCP server tool invocation |
-| `LSPTool` | Language Server Protocol integration |
-| `NotebookEditTool` | Jupyter notebook editing |
-| `TaskCreateTool` / `TaskUpdateTool` | Task creation and management |
-| `SendMessageTool` | Inter-agent messaging |
-| `TeamCreateTool` / `TeamDeleteTool` | Team agent management |
-| `EnterPlanModeTool` / `ExitPlanModeTool` | Plan mode toggle |
-| `EnterWorktreeTool` / `ExitWorktreeTool` | Git worktree isolation |
-| `ToolSearchTool` | Deferred tool discovery |
-| `CronCreateTool` | Scheduled trigger creation |
-| `RemoteTriggerTool` | Remote trigger |
-| `SleepTool` | Proactive mode wait |
-| `SyntheticOutputTool` | Structured output generation |
-
-### 2. Command System (`src/commands/`)
-
-User-facing slash commands invoked with `/` prefix.
-
-| Command | Description |
-|---|---|
-| `/commit` | Create a git commit |
-| `/review` | Code review |
-| `/compact` | Context compression |
-| `/mcp` | MCP server management |
-| `/config` | Settings management |
-| `/doctor` | Environment diagnostics |
-| `/login` / `/logout` | Authentication |
-| `/memory` | Persistent memory management |
-| `/skills` | Skill management |
-| `/tasks` | Task management |
-| `/vim` | Vim mode toggle |
-| `/diff` | View changes |
-| `/cost` | Check usage cost |
-| `/theme` | Change theme |
-| `/context` | Context visualization |
-| `/pr_comments` | View PR comments |
-| `/resume` | Restore previous session |
-| `/share` | Share session |
-| `/desktop` | Desktop app handoff |
-| `/mobile` | Mobile app handoff |
-
-### 3. Service Layer (`src/services/`)
-
-| Service | Description |
-|---|---|
-| `api/` | Anthropic API client, file API, bootstrap |
-| `mcp/` | Model Context Protocol server connection and management |
-| `oauth/` | OAuth 2.0 authentication flow |
-| `lsp/` | Language Server Protocol manager |
-| `analytics/` | GrowthBook-based feature flags and analytics |
-| `plugins/` | Plugin loader |
-| `compact/` | Conversation context compression |
-| `policyLimits/` | Organization policy limits |
-| `remoteManagedSettings/` | Remote managed settings |
-| `extractMemories/` | Automatic memory extraction |
-| `tokenEstimation.ts` | Token count estimation |
-| `teamMemorySync/` | Team memory synchronization |
-
-### 4. Bridge System (`src/bridge/`)
-
-A bidirectional communication layer connecting IDE extensions (VS Code, JetBrains) with the Claude Code CLI.
-
-- `bridgeMain.ts` — Bridge main loop
-- `bridgeMessaging.ts` — Message protocol
-- `bridgePermissionCallbacks.ts` — Permission callbacks
-- `replBridge.ts` — REPL session bridge
-- `jwtUtils.ts` — JWT-based authentication
-- `sessionRunner.ts` — Session execution management
-
-### 5. Permission System (`src/hooks/toolPermission/`)
-
-Checks permissions on every tool invocation. Either prompts the user for approval/denial or automatically resolves based on the configured permission mode (`default`, `plan`, `bypassPermissions`, `auto`, etc.).
-
-### 6. Feature Flags
-
-Dead code elimination via Bun's `bun:bundle` feature flags:
-
-```typescript
-import { feature } from 'bun:bundle'
-
-// Inactive code is completely stripped at build time
-const voiceCommand = feature('VOICE_MODE')
-  ? require('./commands/voice/index.js').default
-  : null
-```
-
-Notable flags: `PROACTIVE`, `KAIROS`, `BRIDGE_MODE`, `DAEMON`, `VOICE_MODE`, `AGENT_TRIGGERS`, `MONITOR_TOOL`
+Two small source patches are required: the Commander option `-d2e` is not a
+valid short flag in current Commander, and `bootstrap/state.ts` was missing the
+`isReplBridgeActive()` export that other modules import.
 
 ---
 
-## Key Files in Detail
-
-### `QueryEngine.ts` (~46K lines)
-
-The core engine for LLM API calls. Handles streaming responses, tool-call loops, thinking mode, retry logic, and token counting.
-
-### `Tool.ts` (~29K lines)
-
-Defines base types and interfaces for all tools — input schemas, permission models, and progress state types.
-
-### `commands.ts` (~25K lines)
-
-Manages registration and execution of all slash commands. Uses conditional imports to load different command sets per environment.
-
-### `main.tsx`
-
-Commander.js-based CLI parser and React/Ink renderer initialization. At startup, it overlaps MDM settings, keychain prefetch, and GrowthBook initialization for faster boot.
-
----
-
-## Tech Stack
+## Tech stack
 
 | Category | Technology |
 |---|---|
-| Runtime | [Bun](https://bun.sh) |
-| Language | TypeScript (strict) |
-| Terminal UI | [React](https://react.dev) + [Ink](https://github.com/vadimdemedes/ink) |
-| CLI Parsing | [Commander.js](https://github.com/tj/commander.js) (extra-typings) |
-| Schema Validation | [Zod v4](https://zod.dev) |
-| Code Search | [ripgrep](https://github.com/BurntSushi/ripgrep) |
-| Protocols | [MCP SDK](https://modelcontextprotocol.io), LSP |
-| API | [Anthropic SDK](https://docs.anthropic.com) |
+| Runtime | Bun |
+| Language | TypeScript |
+| Terminal UI | React + Ink |
+| CLI parsing | Commander.js (extra-typings) |
+| Schema validation | Zod v4 |
+| Protocols | MCP SDK, LSP |
+| API | Anthropic SDK |
 | Telemetry | OpenTelemetry + gRPC |
-| Feature Flags | GrowthBook |
-| Auth | OAuth 2.0, JWT, macOS Keychain |
+| Feature flags | GrowthBook |
+
+Notable design points: parallel startup prefetch (MDM, keychain, settings),
+lazy loading of heavy subsystems, an agent/tool registry with per-tool
+permission models, and multi-agent swarms coordinated through `coordinator/`.
 
 ---
 
-## Notable Design Patterns
+## Known limitations
 
-### Parallel Prefetch
-
-Startup time is optimized by prefetching MDM settings, keychain reads, and API preconnect in parallel before heavy module evaluation begins.
-
-```typescript
-// main.tsx — fired as side-effects before other imports
-startMdmRawRead()
-startKeychainPrefetch()
-```
-
-### Lazy Loading
-
-Heavy modules (OpenTelemetry, gRPC, analytics, and some feature-gated subsystems) are deferred via dynamic `import()` until actually needed.
-
-### Agent Swarms
-
-Sub-agents are spawned via `AgentTool`, with `coordinator/` handling multi-agent orchestration. `TeamCreateTool` enables team-level parallel work.
-
-### Skill System
-
-Reusable workflows defined in `skills/` are executed through `SkillTool`. Users can add custom skills.
-
-### Plugin Architecture
-
-Built-in and third-party plugins are loaded through the `plugins/` subsystem.
+- The interactive Ink UI has not been exercised on a real terminal yet.
+- Modules absent from the snapshot are universal Proxy placeholders. Disabled
+  feature flags normally keep execution out of those branches; enabling a flag
+  that needs one of them requires a real implementation.
+- Bundled skill documentation (claude-api, verify) is placeholder text.
+- Private/native integrations (voice, Computer Use, browser tools, deep links,
+  macOS modifiers) are unavailable.
+- The dependency list was pruned to runtime-referenced packages. Type-only
+  packages (`type-fest`, `vscode-languageserver-*`) were removed, so `tsc` and
+  editors will report unresolved type modules even though runtime is unaffected.
 
 ---
 
-## Research / Ownership Disclaimer
+## Provenance and disclaimer
 
-- This repository is an **educational and defensive security research archive** maintained by a university student.
-- It exists to study source exposure, packaging failures, and the architecture of modern agentic CLI systems.
+This repository contains a mirrored `src/` snapshot of Claude Code that became
+publicly accessible on **2026-03-31** through a source map exposed in the npm
+distribution. It is maintained for educational, defensive security, and
+supply-chain analysis purposes.
+
 - The original Claude Code source remains the property of **Anthropic**.
-- This repository is **not affiliated with, endorsed by, or maintained by Anthropic**.
+- This repository is **not affiliated with, endorsed by, or maintained by
+  Anthropic**.
+- The `InvestAI` name refers to this local reconstruction project, not to an
+  Anthropic product.
