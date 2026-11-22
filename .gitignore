@@ -5,3 +5,8 @@
 node_modules/
 dist/
 .bun/
+
+# Local model credentials (never commit)
+.env
+.env.local
+.env.*.local

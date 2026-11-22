@@ -45,9 +45,37 @@ bun run start                   # interactive REPL
 bun run --preload ./compat/preload.ts ./src/entrypoints/cli.tsx
 ```
 
-Authentication uses your existing Claude Code configuration
-(`~/.claude/settings.json` or environment variables). No credentials are
-stored in this repository.
+### Model configuration
+
+Model provider settings live in the project-local `.env`, which Bun loads
+automatically from the repository root. Copy the template once and fill in
+your credentials:
+
+```bash
+cp .env.example .env
+```
+
+Keys are namespaced with `INVEST_` (e.g. `INVEST_ANTHROPIC_BASE_URL`) so they
+cannot collide with variables exported by a shell or another Claude Code
+install. [compat/preload.ts](compat/preload.ts) translates them to the
+upstream `ANTHROPIC_*` / `CLAUDE_CODE_*` names before the CLI starts, and does
+so unconditionally — the project `.env` therefore wins over stale
+`ANTHROPIC_*` values inherited from a parent process.
+
+`.env` is gitignored; only `.env.example` is committed, so credentials are
+never stored in this repository. The template sets
+`INVEST_CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST=1`, which makes the CLI ignore
+the provider-routing `env` block in `~/.claude/settings.json` — this project
+is self-contained and does not depend on your global Claude Code
+configuration. Remove that line if you want the global settings to apply
+again.
+
+Notes:
+
+- Bun does not override `INVEST_*` variables already exported in your shell;
+  export one to override a single value for a run.
+- `scripts/test.ps1` keeps its offline checks isolated by passing
+  `--setting-sources=` and overriding the endpoint with a local mock.
 
 See [RECONSTRUCTION.md](RECONSTRUCTION.md) for the full reconstruction notes
 and known gaps.

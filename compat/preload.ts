@@ -8,6 +8,41 @@
  * placeholders keep paths that read them from crashing.
  */
 
+/**
+ * Project-local environment mapping.
+ *
+ * The CLI only understands the upstream variable names (`ANTHROPIC_*`,
+ * `CLAUDE_CODE_*`), so a project `.env` that namespaces its keys with
+ * `INVEST_` would otherwise be ignored. Translate them here, before any
+ * application code runs.
+ *
+ * Assignment is unconditional: the project `.env` is the source of truth for
+ * this checkout, so it must win over stale `ANTHROPIC_*` values inherited
+ * from a parent process. Values from `~/.claude/settings.json` are filtered
+ * out separately via `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST`.
+ *
+ * Shell overrides still work: Bun lets an exported `INVEST_*` variable take
+ * precedence over the same key in `.env`.
+ */
+const PROJECT_ENV_KEYS = [
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'ANTHROPIC_MODEL',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+  'ANTHROPIC_SMALL_FAST_MODEL',
+  'CLAUDE_CODE_AUTO_MODE_SERVER',
+  'CLAUDE_CODE_AUTO_COMPACT_WINDOW',
+  'CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST',
+] as const;
+
+for (const key of PROJECT_ENV_KEYS) {
+  const value = process.env[`INVEST_${key}`];
+  if (value !== undefined) process.env[key] = value;
+}
+
 const VERSION = process.env.CLAUDE_CODE_VERSION ?? '2.1.330';
 
 ;(globalThis as any).MACRO = {
